@@ -1,12 +1,13 @@
 local vector = require("vector")
 local util = require("util")
 
+love.window.setMode(800, 600)
 local shader = nil
 local world = nil
 
 local lights = {
   {
-    position = vector(200, 300),
+    position = vector(0, 0),
     color = {255, 0, 0},
     size = 100
   }
@@ -20,7 +21,7 @@ do
     if newLight then
       light = newLight
     elseif not light then
-      return
+      --return
     end
     for _, block in pairs(blocks) do
       local vertices = {block.body:getWorldPoints(block.shape:getPoints())}
@@ -42,22 +43,25 @@ end
 
 function love.draw()
   love.graphics.setColor(0, 0, 0)
-  love.graphics.setBlendMode("additive")
+  love.graphics.setBlendMode("add")
   for _, light in pairs(lights) do
     shadows(light)
-    love.graphics.setInvertedStencil(shadows)
+    love.graphics.stencil(shadows, "replace", 255, true)
+    love.graphics.setStencilTest("less", 255)
     love.graphics.setShader(shader)
-    shader:send("light_position", {light.position.x, love.graphics.getHeight() - light.position.y})
+    shader:send("light_position", {light.position.x, light.position.y})
     shader:send("light_color", light.color)
     shader:send("light_size", light.size)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
-    love.graphics.setInvertedStencil()
+    love.graphics.stencil(shadows, "replace", 1, true)
+    love.graphics.setStencilTest("less", 255)
     love.graphics.setShader()
   end
-  love.graphics.setBlendMode("multiplicative")
+  love.graphics.setBlendMode("multiply")
   for _, block in pairs(blocks) do
     love.graphics.setColor(block.color)
     love.graphics.polygon("fill", block.body:getWorldPoints(block.shape:getPoints()))
+    block.body:getWorldPoints(block.shape:getPoints())
   end
   love.graphics.setBlendMode("alpha")
   love.graphics.setColor(255, 255, 255)
@@ -68,35 +72,31 @@ end
 
 function love.load()
   shader = love.graphics.newShader("shader.frag", "shader.vert");
-  love.physics.setMeter(50)
-  world = love.physics.newWorld(0, 9.81 * 50, true)
+  love.physics.setMeter(100)
+  world = love.physics.newWorld(0, 0, true)
   floor = {}
   floor.body = love.physics.newBody(world, 400, 625)
   floor.shape = love.physics.newRectangleShape(800, 50)
   floor.fixture = love.physics.newFixture(floor.body, floor.shape)
   floor.color = {0, 0, 0}
-  table.insert(blocks, floor)
 
   ceiling = {}
   ceiling.body = love.physics.newBody(world, 400, -25)
   ceiling.shape = love.physics.newRectangleShape(800, 50)
   ceiling.fixture = love.physics.newFixture(ceiling.body, ceiling.shape)
   ceiling.color = {0, 0, 0}
-  table.insert(blocks, ceiling)
 
   leftWall = {}
   leftWall.body = love.physics.newBody(world, -25, 300)
   leftWall.shape = love.physics.newRectangleShape(50, 600)
   leftWall.fixture = love.physics.newFixture(leftWall.body, leftWall.shape)
   leftWall.color = {0, 0, 0}
-  table.insert(blocks, leftWall)
 
   rightWall = {}
   rightWall.body = love.physics.newBody(world, 825, 300)
   rightWall.shape = love.physics.newRectangleShape(50, 600)
   rightWall.fixture = love.physics.newFixture(rightWall.body, rightWall.shape)
   rightWall.color = {0, 0, 0}
-  table.insert(blocks, rightWall)
 
   starter = {}
   starter.body = love.physics.newBody(world, 400, 100, "dynamic")
@@ -106,6 +106,8 @@ function love.load()
   table.insert(blocks, starter)
 end
 
+
+
 function love.update(delta)
   print(mouseJoint)
   if mouseJoint ~= nil then
@@ -114,6 +116,7 @@ function love.update(delta)
   world:update(delta)
   local light = lights[#lights]
   light.position = vector(love.mouse.getX(), love.mouse.getY())
+  
   if love.keyboard.isDown("w") then
     light.size = light.size + 100 * delta
   end
@@ -134,7 +137,7 @@ end
 mouseJoint = nil
 
 function love.mousepressed(x, y, button)
-  if button == "l" then
+  if button == 1 then
     local light = lights[#lights]
     local newLight = {
       position = light.position,
@@ -142,7 +145,7 @@ function love.mousepressed(x, y, button)
       color = light.color
     }
     lights[#lights + 1] = newLight
-  elseif button == "r" then
+  elseif button == 2 then
     for _, block in pairs(blocks) do
       if block.fixture:testPoint(x, y) then
         mouseJoint = love.physics.newMouseJoint(block.body, x, y)
@@ -153,7 +156,7 @@ function love.mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
-  if button == "r" then
+  if button == 2 then
     if mouseJoint then
       mouseJoint:destroy()
       mouseJoint = nil
@@ -163,13 +166,14 @@ end
 
 function love.keypressed(key)
   if key == "up" then
-    impulse(0, -500)
+    impulse(0, -50)
   elseif key == "down" then
-    impulse(0, 500)
+    impulse(0, 50)
   elseif key == "left" then
-    impulse(-500, 0)
+    impulse(-50, 0)
   elseif key == "right" then
-    impulse(500, 0)
+    impulse(50, 0)
+    
   elseif key == "f" then
     for i = 1, math.random(1, 5) do
       block = {}
@@ -180,7 +184,7 @@ function love.keypressed(key)
       table.insert(blocks, block)
     end
   elseif key == "r" then
-    for i = 1, math.min(5, #blocks - 4) do
+    for i = 1, #blocks do
       blocks[#blocks].fixture:destroy()
       blocks[#blocks].body:destroy()
       table.remove(blocks, #blocks)
@@ -200,10 +204,7 @@ function love.keypressed(key)
 end
 
 function impulse(x, y)
-  if #blocks == 4 then
-    return
-  end
-  for i = 5, #blocks do
+  for i = 1, #blocks do
     blocks[i].body:applyLinearImpulse(x, y)
   end
 end
